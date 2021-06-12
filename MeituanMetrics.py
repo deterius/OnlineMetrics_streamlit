@@ -4,7 +4,7 @@ import numpy as np
 import seaborn as sns
 import plotly
 import plotly.express as px
-
+import openpyxl
 
 
 def app():
@@ -12,7 +12,7 @@ def app():
     rocket = sns.color_palette("rocket_r", as_cmap=True)
 
     #-------UPLOAD OLD DATA ----------
-    df_old = pd.read_excel('combineddata/MeituanCombined.xlsx')
+    df_old = pd.read_excel('combineddata/MeituanCombined.xlsx',  engine='openpyxl')
 
 
     #-------SIDE BAR -------

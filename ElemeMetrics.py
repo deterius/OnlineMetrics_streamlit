@@ -4,6 +4,7 @@ import numpy as np
 import seaborn as sns
 import plotly
 import plotly.express as px
+import openpyxl
 
 
 
@@ -19,7 +20,7 @@ def app():
 
 
     #-------UPLOAD OLD DATA ----------
-    df_old = pd.read_excel('combineddata/ElemeCombined.xlsx')
+    df_old = pd.read_excel('combineddata/ElemeCombined.xlsx',  engine='openpyxl')
 
 
     #-------UPLOAD FILE -------
