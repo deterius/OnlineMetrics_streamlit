@@ -33,7 +33,7 @@ def app():
     if uploaded_file is not None:
         print(uploaded_file)
         try:
-            wb = pd.read_excel(uploaded_file)
+            wb = pd.read_excel(uploaded_file, engine='openpyxl')
         except Exception as e:
             print(e)
             st.write('Wrong File Attached')

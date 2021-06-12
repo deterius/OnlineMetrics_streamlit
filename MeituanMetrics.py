@@ -158,11 +158,12 @@ def app():
 
 
     # Plot lines
-    dflines= pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['Net Revenue'], aggfunc='sum')
+    dflines= pd.crosstab(df_metrics['Store Name'],df_metrics[option], values=df_metrics['Net Revenue'], aggfunc='sum').transpose()
     fig = px.line(dflines)
     fig.update_layout(title_text='Revenue per store', title_x=0.5, xaxis_rangeslider_visible=True, )
     fig.update_yaxes(title_text = 'Revenue')
 
+   
 
     #-------------------------
     st.title('Meituan Reports')
@@ -171,7 +172,8 @@ def app():
     st.write("Last date ends on: " + last.split(' ')[4])
 
     #plot lines - 
-    st.plotly_chart(fig)
+    st.write(fig, width=0)
+    
     st.subheader('Weekly Revenue')
     st.write(df_rev_store.style.background_gradient(cmap=hg).format("{:,.0f}"))
 
