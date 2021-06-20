@@ -23,7 +23,7 @@ def app():
 
 
     #-------UPLOAD OLD DATA ----------
-    df_old = pd.read_excel('/Users/simeonbourim/ML/OnlineMetrics/combineddata/flipCombined.xlsx',  engine='openpyxl')
+    df_old = pd.read_excel('combineddata/FlipCombined.xlsx',  engine='openpyxl')
     df_old = df_old.drop(df_old.columns[0], axis=1)
 
     #-------UPLOAD FILE -------
@@ -39,7 +39,7 @@ def app():
         #create backup of old file
         today = pd.to_datetime("today")
         today = today.strftime("%Y-%m-%d")
-        df_old.to_excel('/Users/simeonbourim/ML/OnlineMetrics/combineddata/flipbackup/FlipBackup'+today+'.xlsx')
+        df_old.to_excel('/combineddata/flipbackup/FlipBackup'+today+'.xlsx')
         try:
             wb = pd.read_excel(uploaded_file, engine='openpyxl')
             
