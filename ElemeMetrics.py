@@ -5,7 +5,7 @@ import seaborn as sns
 import plotly
 import plotly.express as px
 import openpyxl
-
+from PIL import Image
 
 
 
@@ -18,20 +18,20 @@ def app():
     #Define Columns
     col1, buffer, col3 = st.beta_columns([4,1,4])
 
-
     #-------UPLOAD OLD DATA ----------
     df_old = pd.read_excel('combineddata/ElemeCombined.xlsx',  engine='openpyxl')
 
-
     #-------UPLOAD FILE -------
-    
     st.subheader('Upload New Eleme Data')
     uploaded_file = st.file_uploader(label='Eleme: XLSX file', type=['csv','xlsx'])
 
 
     global wb
     if uploaded_file is not None:
-        print(uploaded_file)
+        #create backup of old file
+        today = pd.to_datetime("today")
+        today = today.strftime("%Y-%m-%d")
+        df_old.to_excel('combineddata/Elemebackup/eleme'+today+'.xlsx')
         try:
             wb = pd.read_excel(uploaded_file, engine='openpyxl')
         except Exception as e:
@@ -59,8 +59,7 @@ def app():
         wb = wb.rename(columns=enc)
         wb.set_index(wb['Date'], inplace=True)
         wb = wb.drop(labels='Date', axis=1)
-        cn_stores = wb['Store Name'].unique()
-        wb['Store Name'] = wb['Store Name'].replace(cn_stores,['6 Gubei','5 TS','7 Magnolia','2 Fengxian','8 Julu','QD 1','9 CS','10 CX','4 Zunyi','3 Pudong'])
+        wb['Store Name'] = wb['Store Name'].replace({'兄弟烤肉Brothers Kebab  烤肉卷(古北家乐福店)': '6 Gubei', '兄弟烤肉Brothers Kebab  烤肉卷(南京西路店)':'5 TS', '兄弟烤肉Brothers Kebab  烤肉卷(淮海西路店)':'7 Magnolia','兄弟烤肉Brothers Kebab  烤肉卷(奉贤路店)': '2 Fengxian', '兄弟烤肉Brothers Kebab  烤肉卷(巨鹿路店)': '8 Julu','Brothers Kebab兄弟烤肉店(香港中路店)':'QD 1','兄弟烤肉Brothers Kebab  烤肉卷(长宁区店)':'4 Zunyi','兄弟烤肉Brothers Kebab  烤肉卷(南泉北路店)':'3 Pudong','兄弟烤肉Brothers Kebab 烤肉卷(长寿路店)':'9 CS','兄弟烤肉Brothers Kebab 烤肉卷(漕溪路店)':'10 CX'})
 
         #Add Weeks and Months
         wb.reset_index(inplace=True)
@@ -84,9 +83,10 @@ def app():
 
         #duplicates
         df_raw.drop_duplicates(subset=['Date','Store Name','Net Revenue','Gross Revenue'],inplace=True)
-        
     except Exception as e:
         print(e)
+
+
     try:
         df = df_raw
         #replace the old data with the combined data
@@ -99,25 +99,35 @@ def app():
 
 
     # ------------------------
-    # Weekly Store revenue
+    # MAIN BODY
 
     #Select Date format
    
     option = st.sidebar.selectbox(
     'Select report time format',
-        ('Week', 'Date'))
-        
-    st.write('You selected:', option)
+        ('Week', 'Month', 'Date'))
+    st.write('Period Type:', option)
+
+    # #select stores
+    stores = df['Store Name'].unique()
+    store_select = st.sidebar.multiselect( "Select Stores", stores)
+
 
     #DF For Metrics Data
-    df_metrics = df[['Date','Week','Month','Store Name','Net Revenue','Gross Revenue','Store Subsidy (Total)','New Customer Count','Returners Count','New Customer Conversion Rate','Order Conversion Rate']]
+    df_metrics = df[['Date','Week','Month','Store Name','Net Revenue','Gross Revenue','Store Subsidy (Total)','New Customer Count','Returners Count','New Customer Conversion Rate','Order Conversion Rate','Completed Orders']]
+    
+    #filter stores according to selections
+    if len(store_select) == 0:
+         pass
+    elif len(store_select) > 0:
+        df_metrics = df_metrics[df_metrics['Store Name'].isin(store_select)] 
+    
     df_metrics.reset_index(inplace=True)
-
 
     # Convert Date to a readable format
     df_metrics['Date'] = pd.to_datetime(df_metrics['Date']).dt.date
+    
     #Total Revenue
-
     df_rev_store = pd.crosstab(df_metrics[option].sort_values(ascending=False), df_metrics['Store Name'], values=df_metrics['Net Revenue'], aggfunc='sum', ).sort_index(ascending=False)
 
 
@@ -127,8 +137,18 @@ def app():
     #Returning Customers
     df_ret = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['Returners Count'], aggfunc='sum').sort_index(ascending=False)
 
+    #Returning Customers Rate (Returners / Total Customers)
+    df_ret_rate = df_metrics[['Date','Week','Month','Store Name','Completed Orders','Returners Count','New Customer Count']]
+    df_ret_rate['Returners Rate'] = df_ret_rate['Returners Count'] / (df_ret_rate['Returners Count'] + df_ret_rate['New Customer Count'])
+    df_ret_rate = pd.crosstab(df_ret_rate[option], df_ret_rate['Store Name'], values=df_ret_rate['Returners Rate'], aggfunc='mean').sort_index(ascending=False)
+    
+    #New Customers Rate (Returners / Total Customers)
+    df_nc_rate = df_metrics[['Date','Week','Month','Store Name','Completed Orders','Returners Count','New Customer Count']]
+    df_nc_rate['Returners Rate'] = df_nc_rate['New Customer Count'] / (df_nc_rate['Returners Count'] + df_nc_rate['New Customer Count'])
+    df_nc_rate = pd.crosstab(df_nc_rate[option], df_nc_rate['Store Name'], values=df_nc_rate['Returners Rate'], aggfunc='mean').sort_index(ascending=False)
+    
     #Total discount
-    df_disc = df_metrics[['Date','Week','Store Name','Gross Revenue','Store Subsidy (Total)']]
+    df_disc = df_metrics[['Date','Week','Month','Store Name','Gross Revenue','Store Subsidy (Total)']]
     df_disc['Discount'] = df_disc['Store Subsidy (Total)'] / df_disc['Gross Revenue']
     df_disc = pd.crosstab(df_disc[option], df_disc['Store Name'], values=df_disc['Discount'], aggfunc='mean').sort_index(ascending=False)
 
@@ -141,7 +161,7 @@ def app():
     # Plot lines
     dflines= pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['Net Revenue'], aggfunc='sum')
     fig = px.line(dflines)
-    fig.update_layout(title_text='Weekly Revenue per store', title_x=0.5, xaxis_rangeslider_visible=True)
+    fig.update_layout(title_text='Revenue per store', title_x=0.5, xaxis_rangeslider_visible=True)
     fig.update_yaxes(title_text = 'Revenue')
 
 #     # line_fig = px.line(multiplayer_df, x='date', y='statPoints', color='name')
@@ -155,30 +175,36 @@ def app():
 
     # Last Date on current DF
     last = df['Date'].sort_values(ascending=False).iloc[0:1].dt.strftime('%m/%d/%Y').to_string()
-    st.write("Last date ends on: " + last.split(' ')[4])
+    st.info("Last date ends on: " + last.split(' ')[4])
 
 
    
     #plot lines - 
-    st.plotly_chart(fig)
     
+    st.plotly_chart(fig, use_container_width=True)
 
  
-    st.subheader('Weekly Revenue')
-    st.write(df_rev_store.style.background_gradient(cmap=hg).format("{:,.0f}"))
-
+    st.subheader('Total Eleme Revenue')
+    st.write(df_rev_store.style.background_gradient(cmap=hg, axis=0).format("{:,.0f}"))
 
     st.subheader('New Customer Count')
-    st.write(df_nc.style.background_gradient(cmap=hg).format("{:,.0f}"))
+    st.write(df_nc.style.background_gradient(cmap=hg, axis=0).format("{:,.0f}"))
 
     st.subheader('Returners Count')
-    st.write(df_ret.style.background_gradient(cmap=hg).format("{:,.0f}"))
+    st.write(df_ret.style.background_gradient(cmap=hg, axis=0).format("{:,.0f}"))
+
+    st.subheader('New Customers Rate (NC/Total Customers)')
+    st.write(df_nc_rate.style.background_gradient(cmap=rocket, axis=0).format("{:,.2f}"))
+
+    st.subheader('Returners Rate (Returners/Total Customers)')
+    st.write(df_ret_rate.style.background_gradient(cmap=rocket, axis=0).format("{:,.2f}"))
+
 
     st.subheader('Total Discount Rate')
-    st.write(df_disc.style.background_gradient(cmap=rocket).format("{:,.2f}"))
+    st.write(df_disc.style.background_gradient(cmap=rocket, axis=0).format("{:,.2f}"))
 
     st.subheader('New Customer Order Conversion')
-    st.write(df_nc_con.style.background_gradient(cmap=hg).format("{:,.2f}"))
+    st.write(df_nc_con.style.background_gradient(cmap=hg, axis=0).format("{:,.2f}"))
 
     st.subheader('Total Conversion Rate')
-    st.write(df_total_conv.style.background_gradient(cmap=hg).format("{:,.2f}"))
+    st.write(df_total_conv.style.background_gradient(cmap=hg, axis=0).format("{:,.2f}"))

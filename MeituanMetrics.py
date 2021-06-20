@@ -20,6 +20,10 @@ def app():
     uploaded_file = st.file_uploader(label='Meituan: CSV file', type=['csv','xlsx'])
     global wb
     if uploaded_file is not None:
+        #create backup of old file
+        today = pd.to_datetime("today")
+        today = today.strftime("%Y-%m-%d")
+        df_old.to_excel('combineddata/Meituanbackup/meituan'+today+'.xlsx')
         try:
             wb = pd.read_csv(uploaded_file, encoding='gb2312')
         except:
@@ -107,9 +111,11 @@ def app():
         print(e)
 
     try:
+        
         df = df_raw
         #replace the old data with the combined data
         df.to_excel('combineddata/MeituanCombined.xlsx')
+        
     except Exception as e:
         print(e)
         df = df_old
@@ -125,12 +131,20 @@ def app():
     option = st.sidebar.selectbox(
        'Select report time format',
         ('Week', 'Date'))
-        
-    st.write('You selected:', option)
-    
+            
+     # #select stores
+    stores = df['Store Name'].unique()
+    store_select = st.sidebar.multiselect( "Filter Stores", stores)
 
     #DF For Metrics Data
     df_metrics = df[['Date','Week','Month','Store Name','Net Revenue','Gross Revenue','Store Subsidy (Total)','New Order Conversion','Return Orders','Order Conversion Rate','New Orders']]
+    
+    #filter stores according to selections
+    if len(store_select) == 0:
+         pass
+    elif len(store_select) > 0:
+        df_metrics = df_metrics[df_metrics['Store Name'].isin(store_select)] 
+    
     df_metrics.reset_index(inplace=True)
     
     # Convert Date to a readable format
