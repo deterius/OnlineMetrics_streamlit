@@ -8,6 +8,7 @@ import openpyxl
 
 
 def app():
+    #Color pallets for crosstabs
     hg = sns.light_palette('green', as_cmap=True)
     rocket = sns.color_palette("rocket_r", as_cmap=True)
 
@@ -15,27 +16,31 @@ def app():
     df_old = pd.read_excel('combineddata/MeituanCombined.xlsx',  engine='openpyxl')
 
 
-    #-------SIDE BAR -------
+    #-------UPLOAD FILE -------
     st.subheader('Upload New Meituan Data')
     uploaded_file = st.file_uploader(label='Meituan: CSV file', type=['csv','xlsx'])
     global wb
     if uploaded_file is not None:
         #create backup of old file
+        print('Making backup')
         today = pd.to_datetime("today")
         today = today.strftime("%Y-%m-%d")
-        df_old.to_excel('combineddata/Meituanbackup/meituan'+today+'.xlsx')
+        df_old.to_excel('combineddata/Meituanbackup/meituanbackup.xlsx')
         try:
+            print('Reading uploaded file')
             wb = pd.read_csv(uploaded_file, encoding='gb2312')
-        except:
+        except Exception as e:
+            print(e)
             st.write('Wrong File Attached!')
 
 
 
     try:
+        print('Clean New Data')
         #Clean New data
+        
         wb.iloc[:,0] = pd.to_datetime(wb.iloc[:,0]).dt.date
         
-        wb.head()
         chc = wb.columns
 
         chc
@@ -77,6 +82,8 @@ def app():
         wb = wb.rename(columns=enc)
         wb.set_index(wb['Date'], inplace=True)
         wb = wb.drop(labels='Date', axis=1)
+
+        print('Renaming Stores')
 
         cn_stores = wb['Store Name'].unique()
         wb['Store Name'] = wb['Store Name'].replace(cn_stores,['2 Fengxian','delete_store','4 Zunyi','3 Pudong','5 TS','6 Gubei','7 Magnolia','8 Julu','QD 1','9 CS','10 CX'])
@@ -126,11 +133,11 @@ def app():
     # ------------------------
     # Weekly Store revenue
 
-
+    
     #Select Date format
     option = st.sidebar.selectbox(
        'Select report time format',
-        ('Week', 'Date'))
+        ('Month','Week', 'Date'))
             
      # #select stores
     stores = df['Store Name'].unique()
@@ -138,7 +145,7 @@ def app():
 
     #DF For Metrics Data
     df_metrics = df[['Date','Week','Month','Store Name','Net Revenue','Gross Revenue','Store Subsidy (Total)','New Order Conversion','Return Orders','Order Conversion Rate','New Orders']]
-    
+
     #filter stores according to selections
     if len(store_select) == 0:
          pass
@@ -151,8 +158,14 @@ def app():
     df_metrics['Date'] = pd.to_datetime(df_metrics['Date']).dt.date
 
     #Total Revenue
-    df_rev_store = pd.crosstab(df_metrics[option].sort_values(ascending=False), df_metrics['Store Name'], values=df_metrics['Net Revenue'], aggfunc='sum', ).sort_index(ascending=False)
+    df_total_rev_group = df.groupby([option])['Net Revenue'].sum().sort_index(ascending=False)
+    df_total_rev = pd.DataFrame(df_total_rev_group)
+    #Plot total revenue
+    total_rev_fig = px.line(df_total_rev_group)
+    total_rev_fig.update_yaxes(title_text = 'Revenue')
 
+    #Total per store Revenue
+    df_rev_store = pd.crosstab(df_metrics[option].sort_values(ascending=False), df_metrics['Store Name'], values=df_metrics['Net Revenue'], aggfunc='sum', ).sort_index(ascending=False)
 
     #New Customers
     df_nc = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['New Orders'], aggfunc='sum').sort_index(ascending=False)
@@ -161,7 +174,7 @@ def app():
     df_ret = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['Return Orders'], aggfunc='sum').sort_index(ascending=False)
 
     #Total discount
-    df_disc = df_metrics[['Date','Week','Store Name','Gross Revenue','Store Subsidy (Total)']]
+    df_disc = df_metrics[['Date','Month','Week','Store Name','Gross Revenue','Store Subsidy (Total)']]
     df_disc['Discount'] = df_disc['Store Subsidy (Total)'] / df_disc['Gross Revenue']
     df_disc = pd.crosstab(df_disc[option], df_disc['Store Name'], values=df_disc['Discount'], aggfunc='mean').sort_index(ascending=False)
 
@@ -174,7 +187,7 @@ def app():
     # Plot lines
     dflines= pd.crosstab(df_metrics['Store Name'],df_metrics[option], values=df_metrics['Net Revenue'], aggfunc='sum').transpose()
     fig = px.line(dflines)
-    fig.update_layout(title_text='Revenue per store', title_x=0.5, xaxis_rangeslider_visible=True, )
+    fig.update_layout(xaxis_rangeslider_visible=True, )
     fig.update_yaxes(title_text = 'Revenue')
 
    
@@ -183,14 +196,24 @@ def app():
     st.title('Meituan Reports')
     # Last Date on current DF
     last = df['Date'].sort_values(ascending=False).iloc[0:1].dt.strftime('%m/%d/%Y').to_string()
-    st.write("Last date ends on: " + last.split(' ')[4])
+    st.info("Last date ends on: " + last.split(' ')[4])
+
+    st.subheader('Total Revenue')
+    tot1, tot2 = st.beta_columns([2,8])
+    with tot1:
+        st.write(" ")
+        st.write(" ") 
+        st.write(" ")
+        st.write(" ")
+        st.write(df_total_rev.style.background_gradient(cmap=hg).format("{:,.0f}"))
+    with tot2:
+        st.plotly_chart(total_rev_fig, use_container_width=True)
+
 
     #plot lines - 
-    st.write(fig, width=0)
-    
-    st.subheader('Weekly Revenue')
+    st.subheader('Total Revenue per store')
+    st.plotly_chart(fig, use_container_width=True)
     st.write(df_rev_store.style.background_gradient(cmap=hg).format("{:,.0f}"))
-
 
     st.subheader('New Customer Count')
     st.write(df_nc.style.background_gradient(cmap=hg).format("{:,.0f}"))

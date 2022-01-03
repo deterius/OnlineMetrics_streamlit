@@ -1,3 +1,4 @@
+from numpy.core.numeric import True_, roll
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,10 +7,15 @@ import plotly
 import plotly.express as px
 import openpyxl
 from PIL import Image
+from openpyxl.reader.excel import load_workbook
+from openpyxl.workbook import Workbook
 
+# helper functions
+from helper_functions import *
 
-
-def app():
+def app(): 
+    global use_old
+    use_old = True
     #Color pallets for crosstabs
     hg = sns.light_palette('green', as_cmap=True)
     rocket = sns.color_palette("rocket_r", as_cmap=True)
@@ -19,7 +25,7 @@ def app():
     col1, buffer, col3 = st.beta_columns([4,1,4])
 
     #-------UPLOAD OLD DATA ----------
-    df_old = pd.read_excel('combineddata/ElemeCombined.xlsx',  engine='openpyxl')
+    df_old = pd.read_parquet('combineddata/ElemeCombined.parquet')
 
     #-------UPLOAD FILE -------
     st.subheader('Upload New Eleme Data')
@@ -29,39 +35,66 @@ def app():
     global wb
     if uploaded_file is not None:
         #create backup of old file
+        print('Making backup')
         today = pd.to_datetime("today")
         today = today.strftime("%Y-%m-%d")
-        df_old.to_excel('combineddata/Elemebackup/eleme'+today+'.xlsx')
+        df_old.to_parquet('combineddata/Elemebackup/elemeBackup'+ today +'.parquet', index=False)
         try:
-            wb = pd.read_excel(uploaded_file, engine='openpyxl')
+            print('Reading uploaded file')
+            wb_raw = load_workbook(uploaded_file)
+            wb1 = wb_raw['data']
+            print('creating WB')
+            wb = pd.DataFrame(wb1.values)
+            #replace header
+            new_header = wb.iloc[0]
+            wb = wb[1:]
+            wb.columns = new_header
         except Exception as e:
             print(e)
-            st.write('Wrong File Attached')
+            st.write('Wrong File Attached!')
 
     try:
-        #Clean New data
-        wb.iloc[:,0] = pd.to_datetime(wb.iloc[:,0]).dt.date
-        chc = wb.columns
-        enc = {chc[0]:'Date',chc[1]:'Store Name',chc[2]:'Store ID',chc[3]:'City',chc[4]:'Operation Time',chc[5]:'Peake Time'
-        ,chc[6]:'Completed Orders',chc[7]:'Failed Orders',chc[8]:'Net Revenue',chc[9]:'Gross Revenue',chc[10]:'Expenses'
-        ,chc[11]:'Customer Actual Price Payed',chc[12]:'Average Actual Price Payed',chc[13]:'Average Revenue',chc[14]:'Products Total Price'
-        ,chc[15]:'Package Revenue',chc[16]:'Self-Delivery Fee',chc[17]:'Other Revenues',chc[18]:'Comission',chc[19]:'Promotion Subsidies Total'
-        ,chc[20]:'Voucher Subsidies',chc[21]:'Delivery Subsidies',chc[22]:'AI Spend-Save Subsidy',chc[23]:'AI Service Fee',chc[24]:'Basic Logistic Fee'
-        ,chc[25]:'Other Service Fees',chc[26]:'Store Canceled Orders',chc[27]:'Clicks',chc[28]:'Visitors',chc[29]:'Order Conversion Rate'
-        ,chc[30]:'New Customer Conversion Rate',chc[31]:'Returners Conversion Rate',chc[32]:'Participating Promotions',chc[33]:'Promotions Number in orders'
-        ,chc[34]:'Promotions per order',chc[35]:'Spend Save Promotion Count',chc[36]:'Super User promotion count',chc[37]:'Delivery promotion count'
-        ,chc[38]:'Input/Output Ratio',chc[39]:'Total Subsidy',chc[40]:'Eleme Subsidy',chc[41]:'Third-party subsidy',chc[42]:'Store Subsidy (Total)'
-        ,chc[43]:'Store Subsidy(Not Incl. Spend Save)',chc[44]:'Promotion Rate (Total)',chc[45]:'Promotion Rate (Not incl. spend save)'
-        ,chc[46]:'Order Count',chc[47]:'Repurchase Count',chc[48]:'Repurchase Rate',chc[49]:'New Customer Count',chc[50]:'Returners Count'
-        ,chc[51]:'Active Product Count',chc[52]:'Purchased Products Count',chc[53]:'86 Product Count',chc[54]:'New Products Count'
-        ,chc[55]:'Promotional Product Count',chc[56]:'Negative Revew Product Count',chc[57]:'Complaint Order Count',chc[58]:'Complaint Order ID'
-        ,chc[59]:'Overtime Order Count',chc[60]:'Overtime Order ID',chc[61]:'Pushed Order Count',chc[62]:'Refused Orders Count'}
-        wb = wb.rename(columns=enc)
+        print('Clean New Data')
+        
+        print('Convert data to numeric')
+        # Convert to numeric & rename columns
+        num_cols = ['有效订单', '无效订单', '收入', '营业额', '支出', '顾客实付总额', '单均实付', '单均收入', '商品销售额', '餐盒费', '自配送费', '其他营业额', '抽佣', '活动补贴', '代金券补贴', '配送费补贴', '智能满减补贴', '智能满减服务费', '基础物流费', '其他服务费支出', '商户原因无效订单数', '曝光人数', '曝光次数', '进店次数', '进店人数', '进店转化率', '下单转化率', '新客下单转化率', '老客下单转化率', '参与活动数', '活动订单数', '活动订单占比', '满减活动订单数', '超会活动订单数', '配送活动订单数', '投入产出比', '活动总补贴', '饿了么补贴', '代理商补贴', '商家活动成本（含满减活动）', '商家活动成本（不含满减活动）', '营销力度（含满减活动）', '营销力度（不含满减活动）', '下单人数', '复购人数', '复购率', '新客人数', '老客人数', '上架商品数', '有交易商品数', '库存不足商品数', '新上架商品数', '活动商品数', '差评订单数', '投诉订单数', '投诉订单id', '出餐超时订单数', '出餐超时订单id', '单均出餐时长', '拒单数']
+        wb[num_cols] = wb[num_cols].apply(pd.to_numeric, errors='ignore')
+        
+        print('Setting renamed columns')
+        wb.rename(columns={'日期':'Date','门店名':'Store Name','门店id':'Store ID','城市名称':'City','营业时长':'Operation Time','高峰营业时长':'Peak Time','有效订单':'Completed Orders','无效订单':'Failed Orders','收入':'Net Revenue','营业额':'Gross Revenue','支出':'Expenses','顾客实付总额':'Customer Actual Price Payed','单均实付':'Average Actual Price Payed','单均收入':'Average Revenue','商品销售额':'Products Total Price','餐盒费':'Package Revenue','自配送费':'Self-Delivery Fee','其他营业额':'Other Revenues','抽佣':'Comission','活动补贴':'Promotion Subsidies Total'
+                           ,'代金券补贴':'Voucher Subsidies','配送费补贴':'Delivery Subsidies','智能满减补贴':'AI Spend-Save Subsidy','智能满减服务费':'AI Service Fee','基础物流费':'Basic Logistic Fee'
+        ,'其他服务费支出':'Other Service Fees','商户原因无效订单数':'Store Canceled Orders','曝光人数':'Views People','曝光次数':'Views Count', '进店次数':'Clicks','进店人数':'Visitors'
+        ,'进店转化率':'Visit Conversion Rate','下单转化率':'Order Conversion Rate'
+        ,'新客下单转化率':'New Customer Conversion Rate','老客下单转化率':'Returners Conversion Rate','参与活动数':'Participating Promotions','活动订单数':'Promotions Number in orders'
+        ,'活动订单占比':'Promotions per order','满减活动订单数':'Spend Save Promotion Count','超会活动订单数':'Super User promotion count','配送活动订单数':'Delivery promotion count'
+        ,'投入产出比':'Input/Output Ratio','活动总补贴':'Total Subsidy','饿了么补贴':'Eleme Subsidy','代理商补贴':'Third-party subsidy','商家活动成本（含满减活动）':'Store Subsidy (Total)'
+        ,'商家活动成本（不含满减活动）':'Store Subsidy(Not Incl. Spend Save)','营销力度（含满减活动）':'Promotion Rate (Total)','营销力度（不含满减活动）':'Promotion Rate (Not incl. spend save)'
+        ,'下单人数':'Order Count','复购人数':'Repurchase Count','复购率':'Repurchase Rate','新客人数':'New Customer Count','老客人数':'Returners Count'
+        ,'上架商品数':'Active Product Count','有交易商品数':'Purchased Products Count','库存不足商品数':'86 Product Count','新上架商品数':'New Products Count'
+        ,'活动商品数':'Promotional Product Count','差评订单数':'Negative Revew Product Count','投诉订单数':'Complaint Order Count','投诉订单id':'Complaint Order ID'
+        ,'出餐超时订单数':'Overtime Order Count','出餐超时订单id':'Overtime Order ID','单均出餐时长':'Pushed Order Count','拒单数':'Refused Orders Count'}, inplace=True, errors='raise')
+        
+        print('renamed columns success')
         wb.set_index(wb['Date'], inplace=True)
         wb = wb.drop(labels='Date', axis=1)
-        wb['Store Name'] = wb['Store Name'].replace({'兄弟烤肉Brothers Kebab  烤肉卷(古北家乐福店)': '6 Gubei', '兄弟烤肉Brothers Kebab  烤肉卷(南京西路店)':'5 TS', '兄弟烤肉Brothers Kebab  烤肉卷(淮海西路店)':'7 Magnolia','兄弟烤肉Brothers Kebab  烤肉卷(奉贤路店)': '2 Fengxian', '兄弟烤肉Brothers Kebab  烤肉卷(巨鹿路店)': '8 Julu','Brothers Kebab兄弟烤肉店(香港中路店)':'QD 1','兄弟烤肉Brothers Kebab  烤肉卷(长宁区店)':'4 Zunyi','兄弟烤肉Brothers Kebab  烤肉卷(南泉北路店)':'3 Pudong','兄弟烤肉Brothers Kebab 烤肉卷(长寿路店)':'9 CS','兄弟烤肉Brothers Kebab 烤肉卷(漕溪路店)':'10 CX'})
-
+        print('Renaming Stores')
+        
+        # df.replace(to_replace ="Boston Celtics", value ="Omega Warrior")
+        
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab  烤肉卷(古北家乐福店)', value='6 Gubei', inplace=True)
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab  烤肉卷(南京西路店)',value='5 TS', inplace=True)
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab  烤肉卷(淮海西路店)',value='7 Magnolia', inplace=True)
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab  烤肉卷(奉贤路店)', value='2 Fengxian', inplace=True)
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab  烤肉卷(巨鹿路店)', value='8 Julu', inplace=True)
+        wb['Store Name'].replace(to_replace='Brothers Kebab兄弟烤肉店(香港中路店)',value='QD 1', inplace=True)
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab  烤肉卷(长宁区店)',value='4 Zunyi', inplace=True)
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab  烤肉卷(南泉北路店)',value='3 Pudong', inplace=True)
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab 烤肉卷(长寿路店)',value='9 CS', inplace=True) 
+        wb['Store Name'].replace(to_replace='兄弟烤肉Brothers Kebab 烤肉卷(漕溪路店)',value='10 CX', inplace=True)
         #Add Weeks and Months
+        print('Add weeks and months')
+
         wb.reset_index(inplace=True)
         wb['Date'] = pd.to_datetime(wb['Date'])
         wb['Week'] = wb['Date'].dt.isocalendar().week
@@ -74,35 +107,43 @@ def app():
         first_col = wb.pop('Week')
         wb.insert(0, 'Month', sec_col )
         wb.insert(0, 'Week', first_col)
-        wb.head()
-
+        
+        
         #Merge with exisiting data
         #Append
-
+        print('Append new data')
+        
+        
         df_raw = df_old.append(wb)
 
         #duplicates
         df_raw.drop_duplicates(subset=['Date','Store Name','Net Revenue','Gross Revenue'],inplace=True)
-    except Exception as e:
-        print(e)
-
-
-    try:
-        df = df_raw
-        #replace the old data with the combined data
-        df.to_excel('combineddata/ElemeCombined.xlsx')
+        try:
+            #replace the old data with the combined data
+            print('replace the old data with the combined data')
+            df_raw.to_excel('combineddata/ElemeCombined.xlsx', index=False)
+            use_old = False
+        except Exception as e:
+            print(e)
+            print('use old df')
+            
+        
     except Exception as e:
         print(e)
         df = df_old
 
-    
 
+    if use_old == True:
+        df = df_old
+    else:
+        df = df_raw
+
+    
 
     # ------------------------
     # MAIN BODY
-
     #Select Date format
-   
+    
     option = st.sidebar.selectbox(
     'Select report time format',
         ('Week', 'Month', 'Date'))
@@ -112,9 +153,11 @@ def app():
     stores = df['Store Name'].unique()
     store_select = st.sidebar.multiselect( "Select Stores", stores)
 
+    # Sets rolling window for SMA functions
+    rolling_window = rolling_window_func(option)
 
     #DF For Metrics Data
-    df_metrics = df[['Date','Week','Month','Store Name','Net Revenue','Gross Revenue','Store Subsidy (Total)','New Customer Count','Returners Count','New Customer Conversion Rate','Order Conversion Rate','Completed Orders']]
+    df_metrics = df[['Date','Week','Month','Store Name','Net Revenue','Gross Revenue','Store Subsidy (Total)','New Customer Count','Returners Count','New Customer Conversion Rate','Order Conversion Rate','Completed Orders', 'Visitors','Average Actual Price Payed','Negative Revew Product Count','Complaint Order Count','Overtime Order Count']]
     
     #filter stores according to selections
     if len(store_select) == 0:
@@ -123,30 +166,60 @@ def app():
         df_metrics = df_metrics[df_metrics['Store Name'].isin(store_select)] 
     
     df_metrics.reset_index(inplace=True)
+    df_metrics = df_metrics.drop(labels='index', axis=1)
 
     # Convert Date to a readable format
     df_metrics['Date'] = pd.to_datetime(df_metrics['Date']).dt.date
     
-    #Total Revenue
-    df_rev_store = pd.crosstab(df_metrics[option].sort_values(ascending=False), df_metrics['Store Name'], values=df_metrics['Net Revenue'], aggfunc='sum', ).sort_index(ascending=False)
 
+    #Total Revenue + (SMA Revenue)
+    df_total_rev_group = total_revenue(df_metrics,option)
+    df_total_rev = pd.DataFrame(df_total_rev_group)
+    
+    # define SMA line
+    df_total_rev['SMA'] = df_total_rev.loc[:,'Net Revenue'].rolling(window=rolling_window).mean()
+    
+    #Plot total revenue
+    total_rev_fig = plotter_func(df_total_rev,'Total Revenue','Revenue')
+    
+    #Total Revenue Per store
+    df_rev_store = df_rev_store = revenue_per_shop(df_metrics,option,'Store Name', 'Net Revenue')
+
+    #SMA per store
+    df_sma_store = sma_per_store(df_metrics,option,'Store Name','Net Revenue',rolling_window)
 
     #New Customers
     df_nc = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['New Customer Count'], aggfunc='sum').sort_index(ascending=False)
 
+    df_nc_sma = df_nc.reset_index()    
+    df_nc_sma.set_index(option, inplace=True)
+    sma_col = []
+    old_sma_col = df_nc_sma.columns
+    for c in df_nc_sma.columns:
+        c = c+' sma'
+        sma_col.append(c)
+        
+    
+    df_nc_sma[sma_col] = df_nc_sma.loc[:,df_nc_sma.columns].rolling(window=rolling_window).mean()
+    df_nc_sma.drop(columns=df_nc_sma.loc[:,old_sma_col].columns.tolist(), inplace=True)
+    df_nc_sma.dropna(inplace=True)
+
     #Returning Customers
     df_ret = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['Returners Count'], aggfunc='sum').sort_index(ascending=False)
 
-    #Returning Customers Rate (Returners / Total Customers)
-    df_ret_rate = df_metrics[['Date','Week','Month','Store Name','Completed Orders','Returners Count','New Customer Count']]
-    df_ret_rate['Returners Rate'] = df_ret_rate['Returners Count'] / (df_ret_rate['Returners Count'] + df_ret_rate['New Customer Count'])
-    df_ret_rate = pd.crosstab(df_ret_rate[option], df_ret_rate['Store Name'], values=df_ret_rate['Returners Rate'], aggfunc='mean').sort_index(ascending=False)
+    #clicks
+    df_visitors = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=(df_metrics['Visitors']), aggfunc='sum').sort_index(ascending=False)
+
+    #Average spend
+    df_average_spend = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=(df_metrics['Average Actual Price Payed']), aggfunc='mean').sort_index(ascending=False)
+
+    #Negative Reviewed Products
+    df_negative_prod = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=(df_metrics['Negative Revew Product Count']/df_metrics['Completed Orders']), aggfunc='sum').sort_index(ascending=False)
+
+    #Overtime Orders
+    df_overtime_order = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=(df_metrics['Overtime Order Count']/df_metrics['Completed Orders']), aggfunc='sum').sort_index(ascending=False)
     
-    #New Customers Rate (Returners / Total Customers)
-    df_nc_rate = df_metrics[['Date','Week','Month','Store Name','Completed Orders','Returners Count','New Customer Count']]
-    df_nc_rate['Returners Rate'] = df_nc_rate['New Customer Count'] / (df_nc_rate['Returners Count'] + df_nc_rate['New Customer Count'])
-    df_nc_rate = pd.crosstab(df_nc_rate[option], df_nc_rate['Store Name'], values=df_nc_rate['Returners Rate'], aggfunc='mean').sort_index(ascending=False)
-    
+
     #Total discount
     df_disc = df_metrics[['Date','Week','Month','Store Name','Gross Revenue','Store Subsidy (Total)']]
     df_disc['Discount'] = df_disc['Store Subsidy (Total)'] / df_disc['Gross Revenue']
@@ -154,57 +227,83 @@ def app():
 
     #New Customer Order Conversion
     df_nc_con = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['New Customer Conversion Rate'], aggfunc='mean').sort_index(ascending=False)
-
     df_total_conv = pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['Order Conversion Rate'], aggfunc='mean').sort_index(ascending=False)
 
 
     # Plot lines
     dflines= pd.crosstab(df_metrics[option], df_metrics['Store Name'], values=df_metrics['Net Revenue'], aggfunc='sum')
     fig = px.line(dflines)
-    fig.update_layout(title_text='Revenue per store', title_x=0.5, xaxis_rangeslider_visible=True)
+    fig.update_layout(xaxis_rangeslider_visible=True)
     fig.update_yaxes(title_text = 'Revenue')
 
-#     # line_fig = px.line(multiplayer_df, x='date', y='statPoints', color='name')
-# line_fig.update_layout(title_text='test', title_x=0.5, xaxis_rangeslider_visible=True, legend=dict(x=-.5, y=-2))
-# line_fig.update_yaxes(title_text='Cumulative Points')
+
+
 
     #-------------------------
     
 
-    st.title('Eleme Reports')
+    st.title('Eleme Reports 饿了么报表')
 
     # Last Date on current DF
     last = df['Date'].sort_values(ascending=False).iloc[0:1].dt.strftime('%m/%d/%Y').to_string()
     st.info("Last date ends on: " + last.split(' ')[4])
 
+    st.subheader('Total Revenue 收入')
+    tot1, tot2 = st.beta_columns([2,8])
+    with tot1:
+        st.write(" ")
+        st.write(" ") 
+        st.write(" ")
+        st.write(" ")
+        st.write(df_total_rev.style.background_gradient(cmap=hg).format("{:,.0f}"))
+    with tot2:
+        st.plotly_chart(total_rev_fig, use_container_width=True)
 
    
-    #plot lines - 
-    
+    #plot total revenue per store
+    st.subheader('Total Eleme Revenue per Store 收入/店')
     st.plotly_chart(fig, use_container_width=True)
-
- 
-    st.subheader('Total Eleme Revenue')
+    st.subheader('Total Eleme Revenue per Store 收入/店')
     st.write(df_rev_store.style.background_gradient(cmap=hg, axis=0).format("{:,.0f}"))
+    
+    st.subheader('Revenue Moving Average Per Store 收入/店')
+    sma_fig = px.line(df_sma_store)
+    sma_fig.update_layout(title_text='Moving Average Revenue Revenue', title_x=0.5 )
+    sma_fig.update_yaxes(title_text = 'Revenue')
+    st.write(sma_fig)
+    
 
-    st.subheader('New Customer Count')
+    st.subheader('New Customer Count 新顾客')
     st.write(df_nc.style.background_gradient(cmap=hg, axis=0).format("{:,.0f}"))
 
-    st.subheader('Returners Count')
+    st.subheader('New Customer Moving Average 新顾客平均')
+    sma_nc_fig = px.line(df_nc_sma)
+    sma_nc_fig.update_layout(title_text='New Customer Moving Average 新顾客平均', title_x=0.5 )
+    sma_nc_fig.update_yaxes(title_text = 'New Customers')
+    st.write(sma_nc_fig)
+
+    st.subheader('Returners Count 老顾客')
     st.write(df_ret.style.background_gradient(cmap=hg, axis=0).format("{:,.0f}"))
 
-    st.subheader('New Customers Rate (NC/Total Customers)')
-    st.write(df_nc_rate.style.background_gradient(cmap=rocket, axis=0).format("{:,.2f}"))
 
-    st.subheader('Returners Rate (Returners/Total Customers)')
-    st.write(df_ret_rate.style.background_gradient(cmap=rocket, axis=0).format("{:,.2f}"))
+    st.subheader('Visitors 进店数')
+    st.write(df_visitors.style.background_gradient(cmap=rocket, axis=0).format("{:,.0f}"))
 
-
-    st.subheader('Total Discount Rate')
+    st.subheader('Total Discount Rate 活动补贴')
     st.write(df_disc.style.background_gradient(cmap=rocket, axis=0).format("{:,.2f}"))
 
-    st.subheader('New Customer Order Conversion')
+    st.subheader('New Customer Order Conversion 新顾客转化率')
     st.write(df_nc_con.style.background_gradient(cmap=hg, axis=0).format("{:,.2f}"))
 
-    st.subheader('Total Conversion Rate')
+    st.subheader('Total Conversion Rate （老新顾客）转化率')
     st.write(df_total_conv.style.background_gradient(cmap=hg, axis=0).format("{:,.2f}"))
+
+    st.subheader('Average (Actual) Spend 实付人均消费')
+    st.write(df_average_spend.style.background_gradient(cmap=hg, axis=1).format("{:,.0f}"))
+
+
+    st.subheader('Bad Reviewed Product Count 商品差评')
+    st.write(df_negative_prod.style.background_gradient(cmap=hg, axis=1).format("{:,.2f}"))
+
+    st.subheader('Late Orders 超时订单')
+    st.write(df_overtime_order.style.background_gradient(cmap=hg, axis=1).format("{:,.2f}"))
